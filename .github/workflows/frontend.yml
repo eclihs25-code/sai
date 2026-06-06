@@ -3,9 +3,6 @@ name: Frontend – ECR build & ECS Fargate deploy
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend.yml"
 
 env:
   AWS_REGION:       ${{ vars.AWS_REGION }}
