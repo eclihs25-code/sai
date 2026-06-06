@@ -1,12 +1,13 @@
-from passlib.context import CryptContext
+import hashlib
 from .models import UserInDB, WorldCupCategory, WorldCupItem
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def _hash(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 # 인메모리 DB (실제 프로덕션에서는 RDS/DynamoDB 등으로 교체)
 _users: list[UserInDB] = [
-    UserInDB(id=1, username="admin", hashed_password=pwd_context.hash("admin1234"), role="admin"),
-    UserInDB(id=2, username="user1", hashed_password=pwd_context.hash("user1234"),  role="user"),
+    UserInDB(id=1, username="admin", hashed_password=_hash("admin1234"), role="admin"),
+    UserInDB(id=2, username="user1", hashed_password=_hash("user1234"),  role="user"),
 ]
 
 _categories: list[WorldCupCategory] = [
@@ -30,7 +31,7 @@ def get_user(username: str) -> UserInDB | None:
     return next((u for u in _users if u.username == username), None)
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return _hash(plain) == hashed
 
 def get_categories() -> list[WorldCupCategory]:
     return _categories
