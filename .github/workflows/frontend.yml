@@ -1,4 +1,4 @@
-name: Frontend – ECR build & App Runner deploy
+name: Frontend – ECR build & ECS Fargate deploy
 
 on:
   push:
@@ -8,10 +8,12 @@ on:
       - ".github/workflows/frontend.yml"
 
 env:
-  AWS_REGION:     ${{ vars.AWS_REGION }}
-  ECR_REGISTRY:   ${{ vars.ECR_REGISTRY }}
-  ECR_REPO:       ${{ vars.ECR_FRONTEND_REPO }}
-  APP_RUNNER_ARN: ${{ vars.APP_RUNNER_FRONTEND_ARN }}
+  AWS_REGION:       ${{ vars.AWS_REGION }}
+  ECR_REGISTRY:     ${{ vars.ECR_REGISTRY }}
+  ECR_REPO:         ${{ vars.ECR_FRONTEND_REPO }}
+  ECS_CLUSTER:      ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE:      ${{ vars.ECS_FRONTEND_SERVICE }}
+  CONTAINER_NAME:   frontend
 
 jobs:
   build-and-deploy:
@@ -33,6 +35,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & push image
+        id: build
         working-directory: frontend
         run: |
           IMAGE_TAG=${{ github.sha }}
@@ -40,9 +43,26 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:latest
           docker push $ECR_REGISTRY/$ECR_REPO:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Trigger App Runner deployment
+      - name: Download current task definition
         run: |
-          aws apprunner start-deployment \
-            --service-arn $APP_RUNNER_ARN \
-            --region $AWS_REGION
+          aws ecs describe-task-definition \
+            --task-definition ${{ vars.ECS_FRONTEND_TASK_DEF }} \
+            --query taskDefinition > task-def.json
+
+      - name: Update ECS task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build.outputs.image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_FRONTEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
